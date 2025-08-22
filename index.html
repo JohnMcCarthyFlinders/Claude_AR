@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quest AR GLB Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background: #000;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            min-width: 250px;
+        }
+        
+        #modelSelect {
+            width: 100%;
+            padding: 8px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: none;
+            background: white;
+        }
+        
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        #status {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .controls {
+            margin-top: 10px;
+        }
+        
+        .control-group {
+            margin: 10px 0;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+        }
+        
+        input[type="number"] {
+            width: 60px;
+            padding: 4px;
+            border: none;
+            border-radius: 3px;
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="ui">
+            <h3>Quest AR GLB Viewer</h3>
+            
+            <select id="modelSelect">
+                <option value="">Select a model...</option>
+            </select>
+            
+            <div class="controls">
+                <button id="enterAR">Enter AR</button>
+                <button id="resetPosition">Reset Position</button>
+                <button id="toggleAnimation">Play/Pause Animation</button>
+            </div>
+            
+            <div class="control-group">
+                <label>Scale: <span id="scaleValue">1.0</span></label>
+                <input type="range" id="scaleSlider" min="0.1" max="5.0" step="0.1" value="1.0">
+            </div>
+            
+            <div class="control-group">
+                <label>Height Offset (m):</label>
+                <input type="number" id="heightOffset" value="0" step="0.1" min="-2" max="2">
+            </div>
+            
+            <div id="status">Ready to load model</div>
+        </div>
+    </div>
+
+    <script>
+        class QuestARViewer {
+            constructor() {
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.currentModel = null;
+                this.mixer = null;
+                this.clock = new THREE.Clock();
+                this.isARSupported = false;
+                this.isInAR = false;
+                this.animationActions = [];
+                
+                this.init();
+                this.setupEventListeners();
+                this.loadAvailableModels();
+            }
+            
+            init() {
+                // Setup renderer
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.xr.enabled = true;
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                document.getElementById('container').appendChild(this.renderer.domElement);
+                
+                // Setup camera
+                this.camera.position.set(0, 1.6, 3);
+                
+                // Setup controls for non-AR mode
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.target.set(0, 1, 0);
+                this.controls.update();
+                
+                // Setup lighting
+                this.setupLighting();
+                
+                // Check AR support
+                this.checkARSupport();
+                
+                // Start render loop
+                this.renderer.setAnimationLoop(this.render.bind(this));
+            }
+            
+            setupLighting() {
+                // Ambient light
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                this.scene.add(ambientLight);
+                
+                // Directional light
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(5, 10, 5);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                directionalLight.shadow.camera.near = 0.5;
+                directionalLight.shadow.camera.far = 50;
+                this.scene.add(directionalLight);
+                
+                // Point light for better model illumination
+                const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
+                pointLight.position.set(0, 5, 0);
+                this.scene.add(pointLight);
+            }
+            
+            async checkARSupport() {
+                if ('xr' in navigator) {
+                    try {
+                        this.isARSupported = await navigator.xr.isSessionSupported('immersive-ar');
+                        const enterARButton = document.getElementById('enterAR');
+                        
+                        if (this.isARSupported) {
+                            enterARButton.disabled = false;
+                            this.updateStatus('AR supported! Load a model and click Enter AR');
+                        } else {
+                            enterARButton.disabled = true;
+                            this.updateStatus('AR not supported on this device');
+                        }
+                    } catch (error) {
+                        console.error('Error checking AR support:', error);
+                        this.updateStatus('Error checking AR support');
+                    }
+                } else {
+                    this.updateStatus('WebXR not supported');
+                }
+            }
+            
+            async loadAvailableModels() {
+                // List of GLB files in the models directory
+                // Update this array with your actual model files
+                const modelFiles = [
+                    'example1.glb',
+                    'example2.glb',
+                    'example3.glb'
+                ];
+                
+                const select = document.getElementById('modelSelect');
+                
+                // Try to fetch models directory listing (GitHub Pages specific)
+                try {
+                    // For GitHub Pages, you'll need to manually list your models here
+                    // or use GitHub API to get repository contents
+                    modelFiles.forEach(filename => {
+                        const option = document.createElement('option');
+                        option.value = `./models/${filename}`;
+                        option.textContent = filename.replace('.glb', '');
+                        select.appendChild(option);
+                    });
+                } catch (error) {
+                    console.warn('Could not auto-detect models:', error);
+                    this.updateStatus('Please add model files to the models/ directory');
+                }
+            }
+            
+            async loadModel(url) {
+                if (!url) return;
+                
+                this.updateStatus('Loading model...');
+                
+                try {
+                    // Remove existing model
+                    if (this.currentModel) {
+                        this.scene.remove(this.currentModel);
+                    }
+                    
+                    // Stop existing animations
+                    if (this.mixer) {
+                        this.mixer.stopAllAction();
+                    }
+                    
+                    const loader = new THREE.GLTFLoader();
+                    const gltf = await new Promise((resolve, reject) => {
+                        loader.load(url, resolve, undefined, reject);
+                    });
+                    
+                    this.currentModel = gltf.scene;
+                    
+                    // Setup model
+                    this.currentModel.position.set(0, 0, -2);
+                    this.currentModel.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+                    
+                    // Setup animations
+                    if (gltf.animations && gltf.animations.length > 0) {
+                        this.mixer = new THREE.AnimationMixer(this.currentModel);
+                        this.animationActions = [];
+                        
+                        gltf.animations.forEach((clip) => {
+                            const action = this.mixer.clipAction(clip);
+                            this.animationActions.push(action);
+                            action.play();
+                        });
+                        
+                        document.getElementById('toggleAnimation').disabled = false;
+                    } else {
+                        document.getElementById('toggleAnimation').disabled = true;
+                    }
+                    
+                    this.scene.add(this.currentModel);
+                    this.updateStatus(`Model loaded: ${url.split('/').pop()}`);
+                    
+                } catch (error) {
+                    console.error('Error loading model:', error);
+                    this.updateStatus('Error loading model. Check console for details.');
+                }
+            }
+            
+            async enterAR() {
+                if (!this.isARSupported || !this.currentModel) return;
+                
+                try {
+                    const session = await navigator.xr.requestSession('immersive-ar', {
+                        requiredFeatures: ['local-floor'],
+                        optionalFeatures: ['dom-overlay'],
+                        domOverlay: { root: document.getElementById('ui') }
+                    });
+                    
+                    this.renderer.xr.setSession(session);
+                    this.isInAR = true;
+                    
+                    // Position model in AR space
+                    this.resetModelPosition();
+                    
+                    this.updateStatus('AR session active');
+                    
+                    session.addEventListener('end', () => {
+                        this.isInAR = false;
+                        this.updateStatus('AR session ended');
+                    });
+                    
+                } catch (error) {
+                    console.error('Error entering AR:', error);
+                    this.updateStatus('Failed to enter AR');
+                }
+            }
+            
+            resetModelPosition() {
+                if (!this.currentModel) return;
+                
+                const heightOffset = parseFloat(document.getElementById('heightOffset').value);
+                
+                if (this.isInAR) {
+                    // Position model in front of user in AR
+                    this.currentModel.position.set(0, heightOffset, -1.5);
+                } else {
+                    // Position model for desktop viewing
+                    this.currentModel.position.set(0, heightOffset, -2);
+                }
+                
+                this.currentModel.rotation.set(0, 0, 0);
+            }
+            
+            updateScale() {
+                if (!this.currentModel) return;
+                
+                const scale = parseFloat(document.getElementById('scaleSlider').value);
+                this.currentModel.scale.setScalar(scale);
+                document.getElementById('scaleValue').textContent = scale.toFixed(1);
+            }
+            
+            toggleAnimation() {
+                if (!this.mixer || this.animationActions.length === 0) return;
+                
+                const isPlaying = this.animationActions.some(action => action.isRunning());
+                
+                this.animationActions.forEach(action => {
+                    if (isPlaying) {
+                        action.pause();
+                    } else {
+                        action.play();
+                    }
+                });
+            }
+            
+            setupEventListeners() {
+                // Model selection
+                document.getElementById('modelSelect').addEventListener('change', (e) => {
+                    this.loadModel(e.target.value);
+                });
+                
+                // AR controls
+                document.getElementById('enterAR').addEventListener('click', () => {
+                    this.enterAR();
+                });
+                
+                document.getElementById('resetPosition').addEventListener('click', () => {
+                    this.resetModelPosition();
+                });
+                
+                document.getElementById('toggleAnimation').addEventListener('click', () => {
+                    this.toggleAnimation();
+                });
+                
+                // Scale control
+                document.getElementById('scaleSlider').addEventListener('input', () => {
+                    this.updateScale();
+                });
+                
+                // Height offset
+                document.getElementById('heightOffset').addEventListener('change', () => {
+                    this.resetModelPosition();
+                });
+                
+                // Window resize
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+            }
+            
+            updateStatus(message) {
+                document.getElementById('status').textContent = message;
+            }
+            
+            render() {
+                // Update controls only when not in AR
+                if (!this.isInAR && this.controls) {
+                    this.controls.update();
+                }
+                
+                // Update animations
+                if (this.mixer) {
+                    const delta = this.clock.getDelta();
+                    this.mixer.update(delta);
+                }
+                
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+        
+        // Initialize the AR viewer when page loads
+        window.addEventListener('load', () => {
+            new QuestARViewer();
+        });
+    </script>
+</body>
+</html>
