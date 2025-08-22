@@ -5,7 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quest AR GLB Viewer - Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Load GLTFLoader after THREE.js is loaded
+        const script = document.createElement('script');
+        script.src = 'https://threejs.org/examples/js/loaders/GLTFLoader.js';
+        script.onload = () => {
+            console.log('GLTFLoader loaded successfully');
+            // Initialize the viewer after GLTFLoader is loaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initViewer);
+            } else {
+                initViewer();
+            }
+        };
+        script.onerror = () => {
+            console.error('Failed to load GLTFLoader');
+            document.getElementById('status').textContent = 'Failed to load GLTFLoader';
+        };
+        document.head.appendChild(script);
+        
+        function initViewer() {
+            console.log('=== AR VIEWER DEBUG START ===');
+            console.log('THREE.js version:', THREE.REVISION);
+            console.log('GLTFLoader available:', typeof THREE.GLTFLoader !== 'undefined');
+            
+            try {
+                const viewer = new QuestARViewer();
+                console.log('QuestARViewer initialized successfully');
+            } catch (error) {
+                console.error('Failed to initialize QuestARViewer:', error);
+                document.getElementById('status').textContent = 'Initialization failed - check console';
+            }
+        }
+    </script>
     <style>
         body {
             margin: 0;
@@ -619,20 +652,7 @@
             }
         }
         
-        // Initialize when page loads
-        window.addEventListener('load', () => {
-            console.log('=== AR VIEWER DEBUG START ===');
-            console.log('THREE.js version:', THREE.REVISION);
-            console.log('GLTFLoader available:', typeof THREE.GLTFLoader !== 'undefined');
-            
-            try {
-                const viewer = new QuestARViewer();
-                console.log('QuestARViewer initialized successfully');
-            } catch (error) {
-                console.error('Failed to initialize QuestARViewer:', error);
-                document.getElementById('status').textContent = 'Initialization failed - check console';
-            }
-        });
+        // QuestARViewer class definition - will be initialized after GLTFLoader loads
     </script>
 </body>
 </html>
