@@ -214,12 +214,14 @@
             }
             
             setupLighting() {
-                // Ambient light
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                console.log('Setting up enhanced lighting...');
+                
+                // Increased ambient light for better base illumination
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
                 this.scene.add(ambientLight);
                 
-                // Directional light
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                // Main directional light (sun-like)
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
                 directionalLight.position.set(5, 10, 5);
                 directionalLight.castShadow = true;
                 directionalLight.shadow.mapSize.width = 2048;
@@ -228,10 +230,36 @@
                 directionalLight.shadow.camera.far = 50;
                 this.scene.add(directionalLight);
                 
-                // Point light for better model illumination
-                const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
+                // Secondary directional light from opposite side for fill lighting
+                const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+                fillLight.position.set(-5, 5, -5);
+                this.scene.add(fillLight);
+                
+                // Bright point light for additional model illumination
+                const pointLight = new THREE.PointLight(0xffffff, 1.0, 100);
                 pointLight.position.set(0, 5, 0);
                 this.scene.add(pointLight);
+                
+                // Additional point lights around the model for even coverage
+                const sideLight1 = new THREE.PointLight(0xffffff, 0.7, 50);
+                sideLight1.position.set(3, 2, 3);
+                this.scene.add(sideLight1);
+                
+                const sideLight2 = new THREE.PointLight(0xffffff, 0.7, 50);
+                sideLight2.position.set(-3, 2, -3);
+                this.scene.add(sideLight2);
+                
+                // Store lights for potential runtime adjustment
+                this.lights = {
+                    ambient: ambientLight,
+                    directional: directionalLight,
+                    fill: fillLight,
+                    point: pointLight,
+                    side1: sideLight1,
+                    side2: sideLight2
+                };
+                
+                console.log('Enhanced lighting setup complete');
             }
             
             async checkARSupport() {
@@ -259,28 +287,45 @@
             async loadAvailableModels() {
                 console.log('Loading available models...');
                 
-                // Your actual GLB files
-                const modelFiles = [
-                    'b.glb',
-                    'c.glb',
-                    't.glb'
+                // Option 1: Your local files (currently only 2 bytes - corrupted)
+                const localFiles = [
+                    { name: 'B (Local)', path: './models/b.glb' },
+                    { name: 'C (Local)', path: './models/c.glb' },
+                    { name: 'T (Local)', path: './models/t.glb' }
+                ];
+                
+                // Option 2: Sample models from web for testing
+                const sampleFiles = [
+                    { name: 'Duck (Sample)', path: 'https://threejs.org/examples/models/gltf/Duck/glTF-Binary/Duck.glb' },
+                    { name: 'Helmet (Sample)', path: 'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF-Binary/DamagedHelmet.glb' },
+                    { name: 'Fox (Sample)', path: 'https://threejs.org/examples/models/gltf/Fox/glTF-Binary/Fox.glb' }
                 ];
                 
                 const select = document.getElementById('modelSelect');
                 
                 try {
-                    console.log('Adding models to dropdown:', modelFiles);
+                    console.log('Adding sample models for testing...');
                     
-                    modelFiles.forEach((filename, index) => {
+                    // Add sample models first (these will work)
+                    sampleFiles.forEach((model, index) => {
                         const option = document.createElement('option');
-                        option.value = `./models/${filename}`;
-                        option.textContent = filename.replace('.glb', '').toUpperCase();
+                        option.value = model.path;
+                        option.textContent = model.name;
                         select.appendChild(option);
-                        console.log(`Added option ${index + 1}: ${option.textContent} -> ${option.value}`);
+                        console.log(`Added sample ${index + 1}: ${model.name} -> ${model.path}`);
+                    });
+                    
+                    // Add local models (for when you fix them)
+                    localFiles.forEach((model, index) => {
+                        const option = document.createElement('option');
+                        option.value = model.path;
+                        option.textContent = model.name + ' (Fix needed)';
+                        select.appendChild(option);
+                        console.log(`Added local ${index + 1}: ${model.name} -> ${model.path}`);
                     });
                     
                     console.log('Select element now has', select.options.length, 'options');
-                    this.updateStatus(`Found ${modelFiles.length} models. Select one to load.`);
+                    this.updateStatus(`Found ${sampleFiles.length} working samples + ${localFiles.length} local files. Try the samples first!`);
                 } catch (error) {
                     console.error('Error loading model list:', error);
                     this.updateStatus('Error loading model list - check console');
