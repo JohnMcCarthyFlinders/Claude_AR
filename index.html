@@ -5,31 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quest AR GLB Viewer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        // Load GLTFLoader with fallback
-        function loadGLTFLoader() {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.onload = resolve;
-                script.onerror = () => {
-                    console.warn('Primary GLTFLoader failed, trying backup...');
-                    const backup = document.createElement('script');
-                    backup.onload = resolve;
-                    backup.onerror = reject;
-                    backup.src = 'https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-                    document.head.appendChild(backup);
-                };
-                script.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-                document.head.appendChild(script);
-            });
-        }
-        
-        loadGLTFLoader().then(() => {
-            console.log('GLTFLoader loaded successfully');
-        }).catch(error => {
-            console.error('Failed to load GLTFLoader:', error);
-        });
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
     <style>
         body {
             margin: 0;
@@ -152,6 +128,7 @@
     <script>
         class QuestARViewer {
             constructor() {
+                console.log('=== QuestARViewer Constructor Start ===');
                 this.scene = new THREE.Scene();
                 this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -165,9 +142,11 @@
                 this.init();
                 this.setupEventListeners();
                 this.loadAvailableModels();
+                console.log('=== QuestARViewer Constructor End ===');
             }
             
             init() {
+                console.log('Initializing renderer...');
                 // Setup renderer
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -179,10 +158,8 @@
                 // Setup camera
                 this.camera.position.set(0, 1.6, 3);
                 
-                // Setup controls for non-AR mode
-                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-                this.controls.target.set(0, 1, 0);
-                this.controls.update();
+                // Basic mouse controls (NO OrbitControls)
+                this.setupBasicControls();
                 
                 // Setup lighting
                 this.setupLighting();
@@ -192,6 +169,48 @@
                 
                 // Start render loop
                 this.renderer.setAnimationLoop(this.render.bind(this));
+                console.log('Renderer initialized successfully');
+            }
+            
+            setupBasicControls() {
+                console.log('Setting up basic mouse controls...');
+                // Simple mouse controls without any external dependencies
+                let isMouseDown = false;
+                let mouseX = 0;
+                let mouseY = 0;
+                
+                const canvas = this.renderer.domElement;
+                
+                canvas.addEventListener('mousedown', (e) => {
+                    isMouseDown = true;
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                canvas.addEventListener('mouseup', () => {
+                    isMouseDown = false;
+                });
+                
+                canvas.addEventListener('mousemove', (e) => {
+                    if (!isMouseDown || this.isInAR) return;
+                    
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    
+                    this.camera.position.x += deltaX * 0.01;
+                    this.camera.position.y -= deltaY * 0.01;
+                    
+                    mouseX = e.clientX;
+                    mouseY = e.clientY;
+                });
+                
+                canvas.addEventListener('wheel', (e) => {
+                    if (this.isInAR) return;
+                    
+                    const zoom = e.deltaY > 0 ? 1.1 : 0.9;
+                    this.camera.position.multiplyScalar(zoom);
+                });
+                console.log('Basic controls setup complete');
             }
             
             setupLighting() {
@@ -240,7 +259,7 @@
             async loadAvailableModels() {
                 console.log('Loading available models...');
                 
-                // List of GLB files in the models directory based on your repository
+                // Your actual GLB files
                 const modelFiles = [
                     'b.glb',
                     'c.glb',
@@ -255,7 +274,7 @@
                     modelFiles.forEach((filename, index) => {
                         const option = document.createElement('option');
                         option.value = `./models/${filename}`;
-                        option.textContent = filename.replace('.glb', '').toUpperCase(); // Show as B, C, T
+                        option.textContent = filename.replace('.glb', '').toUpperCase();
                         select.appendChild(option);
                         console.log(`Added option ${index + 1}: ${option.textContent} -> ${option.value}`);
                     });
@@ -271,6 +290,7 @@
             async loadModel(url) {
                 if (!url) return;
                 
+                console.log('Loading model:', url);
                 this.updateStatus('Loading model...');
                 
                 try {
@@ -286,7 +306,11 @@
                     
                     const loader = new THREE.GLTFLoader();
                     const gltf = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, undefined, reject);
+                        loader.load(url, resolve, 
+                            (progress) => {
+                                console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+                            }, 
+                            reject);
                     });
                     
                     this.currentModel = gltf.scene;
@@ -318,6 +342,7 @@
                     
                     this.scene.add(this.currentModel);
                     this.updateStatus(`Model loaded: ${url.split('/').pop()}`);
+                    console.log('Model loaded successfully');
                     
                 } catch (error) {
                     console.error('Error loading model:', error);
