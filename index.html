@@ -294,6 +294,29 @@
                 this.updateStatus('Loading model...');
                 
                 try {
+                    // First, test if the file exists and get its size
+                    console.log('Testing file access...');
+                    const response = await fetch(url);
+                    console.log('Fetch response:', response.status, response.statusText);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const contentLength = response.headers.get('content-length');
+                    console.log('Content-Length:', contentLength);
+                    
+                    const blob = await response.blob();
+                    console.log('File size:', blob.size, 'bytes');
+                    
+                    if (blob.size === 0) {
+                        throw new Error('File is empty');
+                    }
+                    
+                    if (blob.size < 100) {
+                        throw new Error('File suspiciously small - might be corrupted');
+                    }
+                    
                     // Remove existing model
                     if (this.currentModel) {
                         this.scene.remove(this.currentModel);
@@ -304,16 +327,28 @@
                         this.mixer.stopAllAction();
                     }
                     
+                    console.log('Creating GLTFLoader...');
                     const loader = new THREE.GLTFLoader();
+                    
+                    console.log('Loading GLB file...');
                     const gltf = await new Promise((resolve, reject) => {
-                        loader.load(url, resolve, 
-                            (progress) => {
-                                console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+                        loader.load(url, 
+                            (gltf) => {
+                                console.log('GLB loaded successfully', gltf);
+                                resolve(gltf);
                             }, 
-                            reject);
+                            (progress) => {
+                                console.log('Loading progress:', Math.round(progress.loaded / progress.total * 100) + '%');
+                            }, 
+                            (error) => {
+                                console.error('GLTFLoader error:', error);
+                                reject(error);
+                            }
+                        );
                     });
                     
                     this.currentModel = gltf.scene;
+                    console.log('Model scene:', this.currentModel);
                     
                     // Setup model
                     this.currentModel.position.set(0, 0, -2);
@@ -321,11 +356,13 @@
                         if (child.isMesh) {
                             child.castShadow = true;
                             child.receiveShadow = true;
+                            console.log('Found mesh:', child.name || 'unnamed');
                         }
                     });
                     
                     // Setup animations
                     if (gltf.animations && gltf.animations.length > 0) {
+                        console.log('Found animations:', gltf.animations.length);
                         this.mixer = new THREE.AnimationMixer(this.currentModel);
                         this.animationActions = [];
                         
@@ -337,16 +374,22 @@
                         
                         document.getElementById('toggleAnimation').disabled = false;
                     } else {
+                        console.log('No animations found');
                         document.getElementById('toggleAnimation').disabled = true;
                     }
                     
                     this.scene.add(this.currentModel);
                     this.updateStatus(`Model loaded: ${url.split('/').pop()}`);
-                    console.log('Model loaded successfully');
+                    console.log('Model added to scene successfully');
                     
                 } catch (error) {
-                    console.error('Error loading model:', error);
-                    this.updateStatus('Error loading model. Check console for details.');
+                    console.error('Detailed error loading model:', {
+                        error: error,
+                        message: error.message,
+                        stack: error.stack,
+                        url: url
+                    });
+                    this.updateStatus(`Error: ${error.message}`);
                 }
             }
             
