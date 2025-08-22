@@ -215,6 +215,8 @@
             }
             
             async loadAvailableModels() {
+                console.log('Loading available models...');
+                
                 // List of GLB files in the models directory based on your repository
                 const modelFiles = [
                     'b.glb',
@@ -225,17 +227,21 @@
                 const select = document.getElementById('modelSelect');
                 
                 try {
-                    modelFiles.forEach(filename => {
+                    console.log('Adding models to dropdown:', modelFiles);
+                    
+                    modelFiles.forEach((filename, index) => {
                         const option = document.createElement('option');
                         option.value = `./models/${filename}`;
                         option.textContent = filename.replace('.glb', '').toUpperCase(); // Show as B, C, T
                         select.appendChild(option);
+                        console.log(`Added option ${index + 1}: ${option.textContent} -> ${option.value}`);
                     });
                     
+                    console.log('Select element now has', select.options.length, 'options');
                     this.updateStatus(`Found ${modelFiles.length} models. Select one to load.`);
                 } catch (error) {
-                    console.warn('Could not load models:', error);
-                    this.updateStatus('Error loading model list');
+                    console.error('Error loading model list:', error);
+                    this.updateStatus('Error loading model list - check console');
                 }
             }
             
