@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quest AR GLB Viewer</title>
+    <title>Quest AR GLB Viewer - Fixed</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/GLTFLoader.js"></script>
     <style>
         body {
             margin: 0;
@@ -94,6 +94,12 @@
             border-radius: 3px;
             margin: 0 5px;
         }
+        
+        .lighting-controls {
+            margin-top: 15px;
+            border-top: 1px solid #444;
+            padding-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -121,6 +127,14 @@
                 <input type="number" id="heightOffset" value="0" step="0.1" min="-2" max="2">
             </div>
             
+            <div class="lighting-controls">
+                <label>Ambient Light: <span id="ambientValue">0.6</span></label>
+                <input type="range" id="ambientSlider" min="0.1" max="2.0" step="0.1" value="0.6">
+                
+                <label>Directional Light: <span id="directionalValue">0.8</span></label>
+                <input type="range" id="directionalSlider" min="0.1" max="2.0" step="0.1" value="0.8">
+            </div>
+            
             <div id="status">Ready to load model</div>
         </div>
     </div>
@@ -146,7 +160,7 @@
             }
             
             enhanceMaterial(material) {
-                // Handle different material types
+                // Handle different material types with balanced lighting
                 if (material.isMeshStandardMaterial || material.isMeshPhysicalMaterial) {
                     console.log('Enhancing PBR material:', {
                         metalness: material.metalness,
@@ -154,41 +168,41 @@
                         envMapIntensity: material.envMapIntensity
                     });
                     
-                    // For metallic materials, ensure they have environment mapping
+                    // Tone down metallic reflections that were too bright
                     if (material.metalness > 0.5) {
                         material.envMap = this.scene.environment;
-                        material.envMapIntensity = Math.max(material.envMapIntensity || 1, 1.5);
-                        console.log('Applied environment map to metallic material');
+                        material.envMapIntensity = Math.min(material.envMapIntensity || 1, 0.8); // Reduced from 1.5
+                        material.metalness = Math.min(material.metalness, 0.8); // Reduce extreme metalness
+                        console.log('Applied balanced environment map to metallic material');
                     }
                     
-                    // Slightly reduce extreme roughness for better reflections
-                    if (material.roughness < 0.1) {
-                        material.roughness = Math.max(material.roughness, 0.05);
+                    // Increase roughness slightly to reduce harsh reflections
+                    if (material.roughness < 0.2) {
+                        material.roughness = Math.max(material.roughness, 0.2); // Increased from 0.05
                     }
                     
-                    // Ensure materials are not too dark
+                    // Brighten diffuse materials that were too dark
                     if (material.color && material.color.getHSL) {
                         const hsl = { h: 0, s: 0, l: 0 };
                         material.color.getHSL(hsl);
-                        if (hsl.l < 0.3) {
-                            material.color.setHSL(hsl.h, hsl.s, Math.max(hsl.l, 0.3));
-                            console.log('Brightened dark material');
+                        if (hsl.l < 0.4) { // Increased threshold from 0.3
+                            material.color.setHSL(hsl.h, hsl.s, Math.max(hsl.l, 0.5)); // Brighter minimum
+                            console.log('Brightened dark diffuse material');
                         }
                     }
                 }
                 
-                // For basic materials, add some environment reflection
+                // For basic materials, convert to standard material with better balance
                 else if (material.isMeshLambertMaterial || material.isMeshPhongMaterial) {
-                    console.log('Enhancing basic material');
-                    // Convert to standard material for better lighting
+                    console.log('Converting basic material to standard');
                     const standardMaterial = new THREE.MeshStandardMaterial({
                         color: material.color,
                         map: material.map,
                         normalMap: material.normalMap,
                         envMap: this.scene.environment,
-                        envMapIntensity: 0.3,
-                        metalness: 0.1,
-                        roughness: 0.7
+                        envMapIntensity: 0.2, // Reduced from 0.3
+                        metalness: 0.05,      // Reduced from 0.1
+                        roughness: 0.8        // Increased from 0.7
                     });
                     
                     return standardMaterial;
@@ -206,15 +220,20 @@
                 this.renderer.xr.enabled = true;
                 this.renderer.shadowMap.enabled = true;
                 this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                
+                // Enable tone mapping for better exposure control
+                this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                this.renderer.toneMappingExposure = 1.0;
+                
                 document.getElementById('container').appendChild(this.renderer.domElement);
                 
                 // Setup camera
                 this.camera.position.set(0, 1.6, 3);
                 
-                // Basic mouse controls (NO OrbitControls)
+                // Basic mouse controls
                 this.setupBasicControls();
                 
-                // Setup lighting
+                // Setup balanced lighting
                 this.setupLighting();
                 
                 // Check AR support
@@ -227,7 +246,6 @@
             
             setupBasicControls() {
                 console.log('Setting up basic mouse controls...');
-                // Simple mouse controls without any external dependencies
                 let isMouseDown = false;
                 let mouseX = 0;
                 let mouseY = 0;
@@ -269,85 +287,60 @@
             setupLighting() {
                 console.log('Setting up balanced lighting...');
                 
-                // Reduced ambient light for better contrast balance
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-                this.scene.add(ambientLight);
+                // Increased ambient light for better diffuse illumination
+                this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Increased from 0.4
+                this.scene.add(this.ambientLight);
                 
-                // Main directional light (reduced intensity)
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(5, 10, 5);
-                directionalLight.castShadow = true;
-                directionalLight.shadow.mapSize.width = 2048;
-                directionalLight.shadow.mapSize.height = 2048;
-                directionalLight.shadow.camera.near = 0.5;
-                directionalLight.shadow.camera.far = 50;
-                this.scene.add(directionalLight);
+                // Reduced directional light to prevent overexposure on reflective materials
+                this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Reduced from 0.8
+                this.directionalLight.position.set(5, 10, 5);
+                this.directionalLight.castShadow = true;
+                this.directionalLight.shadow.mapSize.width = 2048;
+                this.directionalLight.shadow.mapSize.height = 2048;
+                this.directionalLight.shadow.camera.near = 0.5;
+                this.directionalLight.shadow.camera.far = 50;
+                this.scene.add(this.directionalLight);
                 
-                // Softer fill light from opposite side
-                const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+                // Softer fill lights
+                const fillLight = new THREE.DirectionalLight(0xffffff, 0.2); // Reduced from 0.3
                 fillLight.position.set(-5, 5, -5);
                 this.scene.add(fillLight);
                 
-                // Point light for additional model illumination
-                const pointLight = new THREE.PointLight(0xffffff, 0.6, 100);
+                // Reduced point light intensity
+                const pointLight = new THREE.PointLight(0xffffff, 0.4, 100); // Reduced from 0.6
                 pointLight.position.set(0, 5, 0);
                 this.scene.add(pointLight);
                 
-                // Softer side lights
-                const sideLight1 = new THREE.PointLight(0xffffff, 0.4, 50);
-                sideLight1.position.set(3, 2, 3);
-                this.scene.add(sideLight1);
-                
-                const sideLight2 = new THREE.PointLight(0xffffff, 0.4, 50);
-                sideLight2.position.set(-3, 2, -3);
-                this.scene.add(sideLight2);
-                
-                // Create a simple environment map for reflective materials
+                // Create a more neutral environment map
                 this.createEnvironmentMap();
-                
-                // Store lights for potential runtime adjustment
-                this.lights = {
-                    ambient: ambientLight,
-                    directional: directionalLight,
-                    fill: fillLight,
-                    point: pointLight,
-                    side1: sideLight1,
-                    side2: sideLight2
-                };
                 
                 console.log('Balanced lighting setup complete');
             }
             
             createEnvironmentMap() {
-                console.log('Creating environment map for reflective materials...');
+                console.log('Creating neutral environment map...');
                 
-                // Create a cube render target for environment mapping
-                const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256);
-                this.environmentMap = cubeRenderTarget.texture;
-                
-                // Create a simple gradient environment
                 const canvas = document.createElement('canvas');
                 canvas.width = 256;
                 canvas.height = 256;
                 const context = canvas.getContext('2d');
                 
-                // Create a gradient from light blue (sky) to white (horizon) to gray (ground)
+                // Create a more neutral gradient
                 const gradient = context.createLinearGradient(0, 0, 0, 256);
-                gradient.addColorStop(0, '#87CEEB');    // Sky blue
-                gradient.addColorStop(0.5, '#FFFFFF');  // White horizon
-                gradient.addColorStop(1, '#D3D3D3');    // Light gray ground
+                gradient.addColorStop(0, '#B0C4DE');    // Light steel blue (less intense)
+                gradient.addColorStop(0.5, '#F5F5F5');  // White smoke (softer than pure white)
+                gradient.addColorStop(1, '#DCDCDC');    // Gainsboro (neutral gray)
                 
                 context.fillStyle = gradient;
                 context.fillRect(0, 0, 256, 256);
                 
-                // Convert canvas to texture
                 const texture = new THREE.CanvasTexture(canvas);
                 texture.mapping = THREE.EquirectangularReflectionMapping;
                 
                 this.scene.environment = texture;
                 this.scene.background = null; // Keep transparent for AR
                 
-                console.log('Environment map created');
+                console.log('Neutral environment map created');
             }
             
             async checkARSupport() {
@@ -375,49 +368,52 @@
             async loadAvailableModels() {
                 console.log('Loading available models...');
                 
-                // Option 1: Your local files (currently only 2 bytes - corrupted)
+                // Working sample models with correct URLs
+                const workingModels = [
+                    { 
+                        name: 'Avocado (Khronos)', 
+                        path: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Avocado/glTF-Binary/Avocado.glb' 
+                    },
+                    { 
+                        name: 'Box Textured (Khronos)', 
+                        path: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoxTextured/glTF-Binary/BoxTextured.glb' 
+                    },
+                    { 
+                        name: 'Duck (Khronos)', 
+                        path: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF-Binary/Duck.glb' 
+                    },
+                    { 
+                        name: 'Flight Helmet (Khronos)', 
+                        path: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/FlightHelmet/glTF-Binary/FlightHelmet.glb' 
+                    }
+                ];
+                
+                // Your local files
                 const localFiles = [
                     { name: 'B (Local)', path: './models/b.glb' },
                     { name: 'C (Local)', path: './models/c.glb' },
                     { name: 'T (Local)', path: './models/t.glb' }
                 ];
                 
-                // Option 2: Sample models from web for testing
-                const sampleFiles = [
-                    { name: 'Duck (Sample)', path: 'https://threejs.org/examples/models/gltf/Duck/glTF-Binary/Duck.glb' },
-                    { name: 'Helmet (Sample)', path: 'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF-Binary/DamagedHelmet.glb' },
-                    { name: 'Fox (Sample)', path: 'https://threejs.org/examples/models/gltf/Fox/glTF-Binary/Fox.glb' }
-                ];
-                
                 const select = document.getElementById('modelSelect');
                 
-                try {
-                    console.log('Adding sample models for testing...');
-                    
-                    // Add sample models first (these will work)
-                    sampleFiles.forEach((model, index) => {
-                        const option = document.createElement('option');
-                        option.value = model.path;
-                        option.textContent = model.name;
-                        select.appendChild(option);
-                        console.log(`Added sample ${index + 1}: ${model.name} -> ${model.path}`);
-                    });
-                    
-                    // Add local models (for when you fix them)
-                    localFiles.forEach((model, index) => {
-                        const option = document.createElement('option');
-                        option.value = model.path;
-                        option.textContent = model.name + ' (Fix needed)';
-                        select.appendChild(option);
-                        console.log(`Added local ${index + 1}: ${model.name} -> ${model.path}`);
-                    });
-                    
-                    console.log('Select element now has', select.options.length, 'options');
-                    this.updateStatus(`Found ${sampleFiles.length} working samples + ${localFiles.length} local files. Try the samples first!`);
-                } catch (error) {
-                    console.error('Error loading model list:', error);
-                    this.updateStatus('Error loading model list - check console');
-                }
+                // Add working models first
+                workingModels.forEach((model) => {
+                    const option = document.createElement('option');
+                    option.value = model.path;
+                    option.textContent = model.name;
+                    select.appendChild(option);
+                });
+                
+                // Add local models
+                localFiles.forEach((model) => {
+                    const option = document.createElement('option');
+                    option.value = model.path;
+                    option.textContent = model.name + ' (Check if file exists)';
+                    select.appendChild(option);
+                });
+                
+                this.updateStatus(`Ready! Try the Khronos sample models first`);
             }
             
             async loadModel(url) {
@@ -427,29 +423,6 @@
                 this.updateStatus('Loading model...');
                 
                 try {
-                    // First, test if the file exists and get its size
-                    console.log('Testing file access...');
-                    const response = await fetch(url);
-                    console.log('Fetch response:', response.status, response.statusText);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    
-                    const contentLength = response.headers.get('content-length');
-                    console.log('Content-Length:', contentLength);
-                    
-                    const blob = await response.blob();
-                    console.log('File size:', blob.size, 'bytes');
-                    
-                    if (blob.size === 0) {
-                        throw new Error('File is empty');
-                    }
-                    
-                    if (blob.size < 100) {
-                        throw new Error('File suspiciously small - might be corrupted');
-                    }
-                    
                     // Remove existing model
                     if (this.currentModel) {
                         this.scene.remove(this.currentModel);
@@ -460,47 +433,40 @@
                         this.mixer.stopAllAction();
                     }
                     
-                    console.log('Creating GLTFLoader...');
                     const loader = new THREE.GLTFLoader();
                     
-                    console.log('Loading GLB file...');
                     const gltf = await new Promise((resolve, reject) => {
                         loader.load(url, 
-                            (gltf) => {
-                                console.log('GLB loaded successfully', gltf);
-                                resolve(gltf);
-                            }, 
+                            (gltf) => resolve(gltf), 
                             (progress) => {
-                                console.log('Loading progress:', Math.round(progress.loaded / progress.total * 100) + '%');
+                                const percent = Math.round(progress.loaded / progress.total * 100);
+                                this.updateStatus(`Loading... ${percent}%`);
                             }, 
-                            (error) => {
-                                console.error('GLTFLoader error:', error);
-                                reject(error);
-                            }
+                            (error) => reject(error)
                         );
                     });
                     
                     this.currentModel = gltf.scene;
-                    console.log('Model scene:', this.currentModel);
                     
-                    // Setup model
+                    // Setup model with balanced materials
                     this.currentModel.position.set(0, 0, -2);
                     this.currentModel.traverse((child) => {
                         if (child.isMesh) {
                             child.castShadow = true;
                             child.receiveShadow = true;
                             
-                            // Enhance materials for better visibility
+                            // Enhance materials with balanced approach
                             if (child.material) {
-                                this.enhanceMaterial(child.material);
+                                const enhanced = this.enhanceMaterial(child.material);
+                                if (enhanced !== child.material) {
+                                    child.material = enhanced;
+                                }
                             }
-                            console.log('Found mesh:', child.name || 'unnamed', 'Material:', child.material?.type || 'none');
                         }
                     });
                     
                     // Setup animations
                     if (gltf.animations && gltf.animations.length > 0) {
-                        console.log('Found animations:', gltf.animations.length);
                         this.mixer = new THREE.AnimationMixer(this.currentModel);
                         this.animationActions = [];
                         
@@ -512,23 +478,27 @@
                         
                         document.getElementById('toggleAnimation').disabled = false;
                     } else {
-                        console.log('No animations found');
                         document.getElementById('toggleAnimation').disabled = true;
                     }
                     
                     this.scene.add(this.currentModel);
                     this.updateStatus(`Model loaded: ${url.split('/').pop()}`);
-                    console.log('Model added to scene successfully');
                     
                 } catch (error) {
-                    console.error('Detailed error loading model:', {
-                        error: error,
-                        message: error.message,
-                        stack: error.stack,
-                        url: url
-                    });
+                    console.error('Error loading model:', error);
                     this.updateStatus(`Error: ${error.message}`);
                 }
+            }
+            
+            updateLighting() {
+                const ambientValue = parseFloat(document.getElementById('ambientSlider').value);
+                const directionalValue = parseFloat(document.getElementById('directionalSlider').value);
+                
+                this.ambientLight.intensity = ambientValue;
+                this.directionalLight.intensity = directionalValue;
+                
+                document.getElementById('ambientValue').textContent = ambientValue.toFixed(1);
+                document.getElementById('directionalValue').textContent = directionalValue.toFixed(1);
             }
             
             async enterAR() {
@@ -544,9 +514,7 @@
                     this.renderer.xr.setSession(session);
                     this.isInAR = true;
                     
-                    // Position model in AR space
                     this.resetModelPosition();
-                    
                     this.updateStatus('AR session active');
                     
                     session.addEventListener('end', () => {
@@ -566,10 +534,8 @@
                 const heightOffset = parseFloat(document.getElementById('heightOffset').value);
                 
                 if (this.isInAR) {
-                    // Position model in front of user in AR
                     this.currentModel.position.set(0, heightOffset, -1.5);
                 } else {
-                    // Position model for desktop viewing
                     this.currentModel.position.set(0, heightOffset, -2);
                 }
                 
@@ -599,12 +565,10 @@
             }
             
             setupEventListeners() {
-                // Model selection
                 document.getElementById('modelSelect').addEventListener('change', (e) => {
                     this.loadModel(e.target.value);
                 });
                 
-                // AR controls
                 document.getElementById('enterAR').addEventListener('click', () => {
                     this.enterAR();
                 });
@@ -617,17 +581,23 @@
                     this.toggleAnimation();
                 });
                 
-                // Scale control
                 document.getElementById('scaleSlider').addEventListener('input', () => {
                     this.updateScale();
                 });
                 
-                // Height offset
                 document.getElementById('heightOffset').addEventListener('change', () => {
                     this.resetModelPosition();
                 });
                 
-                // Window resize
+                // Lighting controls
+                document.getElementById('ambientSlider').addEventListener('input', () => {
+                    this.updateLighting();
+                });
+                
+                document.getElementById('directionalSlider').addEventListener('input', () => {
+                    this.updateLighting();
+                });
+                
                 window.addEventListener('resize', () => {
                     this.camera.aspect = window.innerWidth / window.innerHeight;
                     this.camera.updateProjectionMatrix();
@@ -640,7 +610,6 @@
             }
             
             render() {
-                // Update animations
                 if (this.mixer) {
                     const delta = this.clock.getDelta();
                     this.mixer.update(delta);
@@ -650,12 +619,11 @@
             }
         }
         
-        // Initialize the AR viewer when page loads
+        // Initialize when page loads
         window.addEventListener('load', () => {
             console.log('=== AR VIEWER DEBUG START ===');
             console.log('THREE.js version:', THREE.REVISION);
             console.log('GLTFLoader available:', typeof THREE.GLTFLoader !== 'undefined');
-            console.log('WebGL supported:', !!window.WebGLRenderingContext);
             
             try {
                 const viewer = new QuestARViewer();
@@ -664,8 +632,6 @@
                 console.error('Failed to initialize QuestARViewer:', error);
                 document.getElementById('status').textContent = 'Initialization failed - check console';
             }
-            
-            console.log('=== AR VIEWER DEBUG END ===');
         });
     </script>
 </body>
