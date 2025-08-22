@@ -215,29 +215,27 @@
             }
             
             async loadAvailableModels() {
-                // List of GLB files in the models directory
-                // Update this array with your actual model files
+                // List of GLB files in the models directory based on your repository
                 const modelFiles = [
-                    'example1.glb',
-                    'example2.glb',
-                    'example3.glb'
+                    'b.glb',
+                    'c.glb',
+                    't.glb'
                 ];
                 
                 const select = document.getElementById('modelSelect');
                 
-                // Try to fetch models directory listing (GitHub Pages specific)
                 try {
-                    // For GitHub Pages, you'll need to manually list your models here
-                    // or use GitHub API to get repository contents
                     modelFiles.forEach(filename => {
                         const option = document.createElement('option');
                         option.value = `./models/${filename}`;
-                        option.textContent = filename.replace('.glb', '');
+                        option.textContent = filename.replace('.glb', '').toUpperCase(); // Show as B, C, T
                         select.appendChild(option);
                     });
+                    
+                    this.updateStatus(`Found ${modelFiles.length} models. Select one to load.`);
                 } catch (error) {
-                    console.warn('Could not auto-detect models:', error);
-                    this.updateStatus('Please add model files to the models/ directory');
+                    console.warn('Could not load models:', error);
+                    this.updateStatus('Error loading model list');
                 }
             }
             
